@@ -3,6 +3,11 @@ name = "hyper_multipart"
 version = "0.1.0"
 authors = ["Niclas Rosengren <niclas.rosengren@gmail.com>"]
 edition = "2018"
+description = "Multipart body parsing for hyper responses."
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/nicrgren/hyper_multipart"
+
 
 [dependencies]
 hyper = "0.12.23"
