@@ -34,10 +34,10 @@ pub fn print_stream(s: MultipartChunks<hyper::Body>) {
     let print_loop = s
         .inspect(|part| {
             debug!("==========================================");
-            debug!("New part (body size: {}):", part.body.len());
-            debug!("Headers:");
-            for header in &part.headers {
-                debug!("{}", header);
+            debug!("New part (body size: {}):", part.body_len());
+
+            for header in part.header_lines() {
+                debug!("Header: {:?}", header);
             }
         })
         .for_each(|_| Ok(()))

@@ -6,10 +6,13 @@ use std::time;
 use tokio::fs::file::File;
 
 fn main() {
-    let client = hyper::Client::new();
-    let target_uri: Uri = STREAM_URL.parse().expect("Invalid stream URL");
+    dotenv::dotenv().expect("Failed to initialize dotenv");
+    pretty_env_logger::init();
 
     let stream_url = std::env::var("STREAM_URL").expect("STREAM_URL must be set");
+
+    let client = hyper::Client::new();
+    let target_uri: Uri = stream_url.parse().expect("Invalid stream URL");
 
     let f = client
         .get(target_uri)
@@ -33,11 +36,11 @@ pub fn store_n_images(n: u64, s: impl Stream<Item = Part, Error = Error> + Send 
     let f = s
         .take(n)
         .for_each(|part| {
-            debug!("Storing a with bodysize {}", part.body.len());
+            debug!("Storing a with bodysize {}", part.body_len());
             let filename = format!("camsnap-{}.jpg", now());
 
             let write_fut = File::create(filename)
-                .and_then(|file| tokio::io::write_all(file, part.body))
+                .and_then(|file| tokio::io::write_all(file, part.into_body()))
                 .map(|_| {
                     debug!("Wrote stuffs");
                 })

@@ -1,7 +1,7 @@
 use bytes::{Bytes, BytesMut};
 use futures::{Async, Stream};
 use log::debug;
-use std::io::{self, BufRead};
+use std::str;
 
 use crate::Error;
 
@@ -40,25 +40,11 @@ impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
 
 pub struct MultipartChunks<T> {
     inner: T,
-
-    // special case for the first part
     first_read: bool,
-
-    // This should probably be done using a BytesMut, but I cant figure out
-    // how to do it properly...
-    // All writes advance the cursor meaning all searches are done from the
-    // written stuffs.
-    // Implementing this properly using BytesMut is left as an excersise
-    // for a rainy day.
     buffer: BytesMut,
 
     // boundary
     boundary: String,
-    // The last index we searched up until.
-    // Previously we stored the index up to which we previously searched.
-    // Doing this fucked something up.
-    // Right now we currently search from the beginning everytime we receive new data
-    // TODO(nicrgren): Optimize this bs.
 }
 
 impl<T> MultipartChunks<T> {
@@ -128,8 +114,6 @@ impl Stream for MultipartChunks<hyper::Body> {
                             self.buffer.split_to(i - n_shave).freeze()
                         };
 
-                        // extract the body.
-
                         // shave of the boundary from the buffer.
                         self.buffer.split_to(self.boundary.as_bytes().len());
 
@@ -138,15 +122,7 @@ impl Stream for MultipartChunks<hyper::Body> {
                         Ok(Async::Ready(Some(part)))
                     }
 
-                    None => {
-                        // boundary not found. set last_searched to the length of current
-                        // buffer - the boundary length.
-                        // TODO(nicrgren):
-                        // If a super tiny part is read, this might overflow. Fix with
-                        // a simply if case.
-
-                        self.poll()
-                    }
+                    None => self.poll(),
                 }
             }
 
@@ -170,37 +146,48 @@ impl Stream for MultipartChunks<hyper::Body> {
 
 pub struct Part {
     // Just store the headers as the entire lines for now.
-    pub headers: Vec<String>,
-    pub body: Bytes,
+    headers_data: Bytes,
+    pub body_data: Bytes,
 }
 
 impl Part {
     fn try_from(mut bs: Bytes) -> Result<Self, Error> {
-        // parse this multipart blob.
-        let mut line = String::new();
-        let mut c = io::Cursor::new(&bs);
-        let mut headers = Vec::new();
+        // split headers and body
 
-        // Read headers..
+        match twoway::find_bytes(&bs[..], b"\r\n\r\n") {
+            None => Err(Error::Custom(String::from(
+                "Failed to find Header body separator",
+            ))),
+            Some(p) => {
+                let headers = bs.split_to(p);
+                bs.advance(4); // remove the leading CRLF for body.
 
-        while let Ok(_read) = c.read_line(&mut line) {
-            match line.trim() {
-                "" => break,
-                s => {
-                    debug!("Read header: {}", s);
-                    headers.push(s.to_string())
-                }
+                Ok(Part {
+                    headers_data: headers,
+                    body_data: bs,
+                })
             }
-
-            line.clear();
         }
+    }
 
-        let c_position = c.position() as usize;
-        bs.advance(c_position);
-        debug!("Body size: {}", bs.len());
-        Ok(Part {
-            headers: headers,
-            body: bs,
+    pub fn body(&self) -> &[u8] {
+        &self.body_data
+    }
+
+    pub fn into_body(self) -> Bytes {
+        self.body_data
+    }
+
+    pub fn body_len(&self) -> usize {
+        self.body_data.len()
+    }
+
+    /// Returns an iterator over all the headers lines, with their line endings trimmed.
+    pub fn header_lines<'a>(&'a self) -> impl Iterator<Item = Result<&'a str, str::Utf8Error>> {
+        let slice = &self.headers_data;
+        slice.split(|e| *e == b'\n').map(|line| {
+            // trim of the last \r
+            str::from_utf8(line).map(|s| s.trim())
         })
     }
 }
