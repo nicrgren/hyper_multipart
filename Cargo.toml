@@ -3,9 +3,12 @@ name = "hyper_multipart"
 version = "0.1.1"
 authors = ["Niclas Rosengren <niclas.rosengren@gmail.com>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "Http multipart handling for Hyper"
+documentation = "https://docs.rs/hyper_multipart"
 
 [dependencies]
-hyper = "0.12.23"
+hyper = "0.12.24"
 futures = "0.1.25"
 tokio = "0.1.15"
 http = "0.1.15"
