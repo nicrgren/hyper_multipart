@@ -1,6 +1,5 @@
 use bytes::{Bytes, BytesMut};
 use futures::{Async, Stream};
-use log::debug;
 use std::str;
 
 use crate::Error;
@@ -50,10 +49,10 @@ pub struct MultipartChunks<T> {
 impl<T> MultipartChunks<T> {
     fn new(inner: T, boundary: String) -> Self {
         Self {
-            inner: inner,
+            inner,
+            boundary,
             first_read: false,
             buffer: BytesMut::with_capacity(50000),
-            boundary: boundary,
         }
     }
 }
@@ -183,7 +182,7 @@ impl Part {
     }
 
     /// Returns an iterator over all the headers lines, with their line endings trimmed.
-    pub fn header_lines<'a>(&'a self) -> impl Iterator<Item = Result<&'a str, str::Utf8Error>> {
+    pub fn header_lines(&self) -> impl Iterator<Item = Result<&str, str::Utf8Error>> {
         let slice = &self.headers_data;
         slice.split(|e| *e == b'\n').map(|line| {
             // trim of the last \r
