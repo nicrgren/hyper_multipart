@@ -4,16 +4,26 @@ use std::str;
 
 use crate::Error;
 
+/// Default initial buffer capacity
+pub const DEFAULT_BUFFER_CAP: usize = 35000;
+
 pub trait MultipartResponse<T>
 where
     Self: Sized,
     T: Sized,
 {
-    fn multipart(self) -> Result<MultipartChunks<T>, Error>;
+    fn into_multipart_with_capacity(self, buf_cap: usize) -> Result<MultipartChunks<T>, Error>;
+
+    fn into_multipart(self) -> Result<MultipartChunks<T>, Error> {
+        self.into_multipart_with_capacity(DEFAULT_BUFFER_CAP)
+    }
 }
 
 impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
-    fn multipart(self) -> Result<MultipartChunks<hyper::Body>, Error> {
+    fn into_multipart_with_capacity(
+        self,
+        buf_cap: usize,
+    ) -> Result<MultipartChunks<hyper::Body>, Error> {
         let (parts, body) = self.into_parts();
 
         let ct: mime::Mime = match parts
@@ -33,7 +43,7 @@ impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
         let boundary = ct.get_param("boundary").expect("Boundary not set");
         let boundary = format!("\r\n--{}\r\n", boundary.as_str());
 
-        Ok(MultipartChunks::new(body, boundary))
+        Ok(MultipartChunks::new(body, buf_cap, boundary))
     }
 }
 
@@ -47,12 +57,12 @@ pub struct MultipartChunks<T> {
 }
 
 impl<T> MultipartChunks<T> {
-    fn new(inner: T, boundary: String) -> Self {
+    fn new(inner: T, buf_cap: usize, boundary: String) -> Self {
         Self {
             inner,
             boundary,
             first_read: false,
-            buffer: BytesMut::with_capacity(50000),
+            buffer: BytesMut::with_capacity(buf_cap),
         }
     }
 }
