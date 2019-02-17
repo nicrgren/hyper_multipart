@@ -3,7 +3,7 @@ name = "hyper_multipart"
 version = "0.1.2"
 authors = ["Niclas Rosengren <niclas.rosengren@gmail.com>"]
 edition = "2018"
-license-file = "LICENSE"
+license = "MIT"
 description = "Http multipart handling for Hyper"
 documentation = "https://docs.rs/hyper_multipart"
 
