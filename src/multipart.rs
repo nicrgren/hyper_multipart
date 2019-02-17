@@ -26,24 +26,20 @@ impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
     ) -> Result<MultipartChunks<hyper::Body>, Error> {
         let (parts, body) = self.into_parts();
 
-        let ct: mime::Mime = match parts
+        let header = parts
             .headers
-            .get("content-type")
-            .map(|s| s.to_str().unwrap().parse::<mime::Mime>())
-        {
-            Some(Ok(ct)) => ct,
-            Some(Err(e)) => return Err(Error::Custom(format!("Content-Type, invalid MIME: {}", e))),
-            None => return Err(Error::Custom("Content-Type header missing".to_string())),
-        };
+            .get(http::header::CONTENT_TYPE)
+            .ok_or(Error::ContentTypeMissing)
+            .and_then(|header_value| header_value.to_str().map_err(Error::InvalidHeader))
+            .and_then(|s| s.parse::<mime::Mime>().map_err(Error::InvalidMimeType))?;
 
-        // Parse ct to make sure it's multipart and that the boundary is given.
-        // In the future, we might want to handle mixed differently then others.
-        // But for now, we just chunk all bytes between seps.
+        let boundary = header.get_param("boundary").ok_or(Error::NotMultipart)?;
 
-        let boundary = ct.get_param("boundary").expect("Boundary not set");
-        let boundary = format!("\r\n--{}\r\n", boundary.as_str());
-
-        Ok(MultipartChunks::new(body, buf_cap, boundary))
+        Ok(MultipartChunks::new(
+            body,
+            buf_cap,
+            format!("\r\n--{}\r\n", boundary.as_str()),
+        ))
     }
 }
 
@@ -126,9 +122,7 @@ impl Stream for MultipartChunks<hyper::Body> {
                         // shave of the boundary from the buffer.
                         self.buffer.split_to(self.boundary.as_bytes().len());
 
-                        let part = Part::try_from(part_bs).unwrap();
-
-                        Ok(Async::Ready(Some(part)))
+                        Ok(Async::Ready(Some(Part::from(part_bs))))
                     }
 
                     None => self.poll(),
@@ -160,25 +154,6 @@ pub struct Part {
 }
 
 impl Part {
-    fn try_from(mut bs: Bytes) -> Result<Self, Error> {
-        // split headers and body
-
-        match twoway::find_bytes(&bs[..], b"\r\n\r\n") {
-            None => Err(Error::Custom(String::from(
-                "Failed to find Header body separator",
-            ))),
-            Some(p) => {
-                let headers = bs.split_to(p);
-                bs.advance(4); // remove the leading CRLF for body.
-
-                Ok(Part {
-                    headers_data: headers,
-                    body_data: bs,
-                })
-            }
-        }
-    }
-
     pub fn body(&self) -> &[u8] {
         &self.body_data
     }
@@ -192,11 +167,35 @@ impl Part {
     }
 
     /// Returns an iterator over all the headers lines, with their line endings trimmed.
+    /// Since many jpeg streams uses Headers separated by '=' instead of Https ':' this
+    /// is currently the only way to get the headers.
     pub fn header_lines(&self) -> impl Iterator<Item = Result<&str, str::Utf8Error>> {
         let slice = &self.headers_data;
         slice.split(|e| *e == b'\n').map(|line| {
             // trim of the last \r
             str::from_utf8(line).map(|s| s.trim())
         })
+    }
+}
+
+impl From<Bytes> for Part {
+    fn from(mut bs: Bytes) -> Self {
+        // split headers and body
+
+        match twoway::find_bytes(&bs[..], b"\r\n\r\n") {
+            // No headers
+            None => Part {
+                headers_data: Bytes::with_capacity(0),
+                body_data: bs,
+            },
+            Some(p) => {
+                let headers = bs.split_to(p);
+                bs.advance(4); // remove the leading CRLF for body.
+                Part {
+                    headers_data: headers,
+                    body_data: bs,
+                }
+            }
+        }
     }
 }

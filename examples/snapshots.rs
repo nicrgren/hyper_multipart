@@ -18,7 +18,7 @@ fn main() {
         .get(target_uri)
         .map_err(Error::from)
         .and_then(
-            |response: hyper::Response<hyper::Body>| match response.multipart() {
+            |response: hyper::Response<hyper::Body>| match response.into_multipart() {
                 Ok(multipart_stream) => {
                     store_n_images(10, multipart_stream);
                     Ok(())
