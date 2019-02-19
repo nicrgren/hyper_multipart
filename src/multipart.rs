@@ -1,5 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use futures::{Async, Stream};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use std::str;
 
 use crate::Error;
@@ -175,6 +176,70 @@ impl Part {
             // trim of the last \r
             str::from_utf8(line).map(|s| s.trim())
         })
+    }
+
+    pub fn headers(&self) -> HeaderMap<HeaderValue> {
+        let mut res = HeaderMap::new();
+
+        self.header_lines()
+            .filter_map(|line| line.ok())
+            .map(|s| parse_header_line(s))
+            .for_each(|tuple| match tuple {
+                Some((name, value)) => {
+                    res.insert(name, value);
+                }
+                _ => (),
+            });
+
+        res
+    }
+}
+
+fn parse_header_line(s: &str) -> Option<(HeaderName, HeaderValue)> {
+    if let None = s.find(":") {
+        return None;
+    }
+
+    let mut parts = s.split(":");
+
+    let header_name = parts
+        .next()
+        .map(|s| HeaderName::from_bytes(s.trim().as_bytes()));
+
+    let header_value = parts.next().map(|s| HeaderValue::from_str(s.trim()));
+
+    match (header_name, header_value) {
+        (Some(Ok(name)), Some(Ok(value))) => Some((name, value)),
+        _ => None,
+    }
+}
+
+#[test]
+fn test_parse_header_lines() {
+    let tests = [
+        ("Content-Type: image/jpeg", "content-type", "image/jpeg"),
+        ("Content-Length: 40669", "content-length", "40669"),
+        (
+            "X-Timestamp: 1550567095.266",
+            "x-timestamp",
+            "1550567095.266",
+        ),
+        (
+            "X-SendTimestamp: 1550567095.439",
+            "x-sendtimestamp",
+            "1550567095.439",
+        ),
+        ("X-TimeDiff: 173", "x-timediff", "173"),
+    ];
+
+    for (header, exp_name, exp_val) in &tests {
+        let (name, val) = parse_header_line(header).expect("Parse header line");
+
+        assert_eq!(exp_name, &name.as_str());
+        assert_eq!(
+            exp_val,
+            &val.to_str().expect("Converting header value to_str")
+        );
     }
 }
 
