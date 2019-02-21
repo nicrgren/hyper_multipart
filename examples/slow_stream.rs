@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use futures::{Future, Stream};
 use http::Uri;
 use hyper_multipart::{Error, MultipartChunks, MultipartResponse};
@@ -34,14 +35,30 @@ fn main() {
 
 pub fn handle_stream(s: MultipartChunks<hyper::Body>) {
     let stream = s
-        .throttle(Duration::from_millis(1500))
+        .throttle(Duration::from_millis(1000))
         .inspect(|part| {
             let headers = part.headers();
 
-            let ts = headers.get("x-timestamp");
-            let sent_ts = headers.get("x-sendtimestamp");
+            let ts = headers
+                .get("x-timestamp")
+                .expect("Getting x-timestamp")
+                .to_str()
+                .expect("Convering x-timestamp to str")
+                .parse::<f64>()
+                .expect("Parse x-timestamp as f64") as i64;
 
-            println!("Timestamp: {:?}.     Sent At: {:?}", ts, sent_ts);
+            let sent_ts: i64 = headers
+                .get("x-sendtimestamp")
+                .expect("Getting x-sendtimestamp")
+                .to_str()
+                .expect("Convering x-sendtimestamp to str")
+                .parse::<f64>()
+                .expect("Parse x-sendtimestamp as f64") as i64;
+
+            let ts_date = NaiveDateTime::from_timestamp(ts, 0);
+            let sent_ts_date = NaiveDateTime::from_timestamp(sent_ts, 0);
+
+            println!("Timestamp: {}.     Sent At: {}", ts_date, sent_ts_date);
         })
         .for_each(|_| Ok(()))
         .map_err(|e| error!("Print stream: {}", e));
