@@ -1,6 +1,6 @@
 use futures::{Future, Stream};
 use http::Uri;
-use hyper_multipart::{Error, MultipartChunks, MultipartResponse};
+use hyper_multipart::{Error, Multipart, MultipartChunks};
 use log::{debug, error};
 
 fn main() {

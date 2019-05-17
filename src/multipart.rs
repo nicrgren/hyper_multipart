@@ -8,7 +8,7 @@ use crate::Error;
 /// Default initial buffer capacity
 pub const DEFAULT_BUFFER_CAP: usize = 35000;
 
-pub trait MultipartResponse<T>
+pub trait Multipart<T>
 where
     Self: Sized,
     T: Sized,
@@ -20,7 +20,7 @@ where
     }
 }
 
-impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
+impl Multipart<hyper::Body> for hyper::Response<hyper::Body> {
     fn into_multipart_with_capacity(
         self,
         buf_cap: usize,
@@ -34,6 +34,31 @@ impl MultipartResponse<hyper::Body> for hyper::Response<hyper::Body> {
             .and_then(|header_value| header_value.to_str().map_err(Error::InvalidHeader))
             .and_then(|s| s.parse::<mime::Mime>().map_err(Error::InvalidMimeType))?;
 
+        let boundary = header.get_param("boundary").ok_or(Error::NotMultipart)?;
+
+        Ok(MultipartChunks::new(
+            body,
+            buf_cap,
+            format!("\r\n--{}\r\n", boundary.as_str()),
+        ))
+    }
+}
+
+impl Multipart<hyper::Body> for hyper::Request<hyper::Body> {
+    fn into_multipart_with_capacity(
+        self,
+        buf_cap: usize,
+    ) -> Result<MultipartChunks<hyper::Body>, Error> {
+        let (parts, body) = self.into_parts();
+
+        let header = parts
+            .headers
+            .get(http::header::CONTENT_TYPE)
+            .ok_or(Error::ContentTypeMissing)
+            .and_then(|header_value| header_value.to_str().map_err(Error::InvalidHeader))
+            .and_then(|s| s.parse::<mime::Mime>().map_err(Error::InvalidMimeType))?;
+
+        // TODO: Handle multiparts that does not use boundary.
         let boundary = header.get_param("boundary").ok_or(Error::NotMultipart)?;
 
         Ok(MultipartChunks::new(

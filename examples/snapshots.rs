@@ -1,6 +1,6 @@
 use futures::{Future, Stream};
 use http::Uri;
-use hyper_multipart::{Error, MultipartResponse, Part};
+use hyper_multipart::{Error, Multipart, Part};
 use log::{debug, error};
 use std::time;
 use tokio::fs::file::File;
