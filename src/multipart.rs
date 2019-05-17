@@ -61,11 +61,9 @@ impl Multipart<hyper::Body> for hyper::Request<hyper::Body> {
         // TODO: Handle multiparts that does not use boundary.
         let boundary = header.get_param("boundary").ok_or(Error::NotMultipart)?;
 
-        Ok(MultipartChunks::new(
-            body,
-            buf_cap,
-            format!("\r\n--{}\r\n", boundary.as_str()),
-        ))
+        log::debug!("Found boundary: {:?}", boundary);
+
+        Ok(MultipartChunks::new(body, buf_cap, boundary.as_str()))
     }
 }
 
@@ -80,6 +78,8 @@ pub struct MultipartChunks<T> {
 
 impl<T> MultipartChunks<T> {
     fn new(inner: T, buf_cap: usize, boundary: String) -> Self {
+        let boundary = format!("\r\n--{}", boundary.as_str());
+
         Self {
             inner,
             boundary,
@@ -120,19 +120,34 @@ impl Stream for MultipartChunks<hyper::Body> {
     fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
         match self.inner.poll() {
             Ok(Async::Ready(Some(chunk))) => {
+                log::debug!("Got a chunk!!");
+
                 // Chunk read. Add it to the buffer and search for the
                 // separator once more.
 
                 // Add to buffer.
                 self.buffer.extend(chunk.into_bytes());
 
+                // \r\n--------------------------2b862833cf8f9a93\r\n
+                // \r\n--------------------------2b862833cf8f9a93--\r\n
+                // --------------------------2b862833cf8f9a93\r\n
+
+                // "\r\n--------------------------2b862833cf8f9a93\r\n" in: "--------------------------2b862833cf8f9a93\r\n
+
+                let buffer_s = unsafe { String::from_utf8_lossy(self.buffer.as_ref()) };
+                log::debug!(
+                    "Searching for boundary: {:?} in: {:?}",
+                    self.boundary,
+                    buffer_s
+                );
+
                 // Search for the separator, preceeded by CRLF (already added to boundary)
                 let boundary = self.boundary.as_bytes();
                 match twoway::find_bytes(&self.buffer[..], boundary) {
                     Some(i) => {
+                        log::debug!("Found separator");
                         // boundary found. take the buffer up the boundary
                         // and return it and set searched_to to 0.
-
                         let part_bs = if self.first_read {
                             self.buffer.split_to(i).freeze()
                         } else {
@@ -156,17 +171,17 @@ impl Stream for MultipartChunks<hyper::Body> {
             }
 
             Ok(Async::NotReady) => {
-                // debug!("Poll returning NotReady");
+                log::debug!("Poll returning NotReady");
                 Ok(Async::NotReady)
             }
 
             Ok(Async::Ready(None)) => {
-                // debug!("Poll returning Ready(None)");
+                log::debug!("Poll returning Ready(None)");
                 Ok(Async::Ready(None))
             }
 
             Err(e) => {
-                // debug!("Poll returning Error({})", e);
+                log::debug!("Poll returning Error({})", e);
                 Err(Error::Http(e))
             }
         }
