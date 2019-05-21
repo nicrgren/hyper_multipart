@@ -2,4 +2,9 @@ mod error;
 pub use error::Error;
 
 mod multipart;
-pub use multipart::{Multipart, MultipartChunks, Part};
+pub use multipart::{Multipart, MultipartChunks};
+
+mod part;
+pub use part::Part;
+
+mod parser;

@@ -5,15 +5,23 @@ pub enum Error {
     /// Cannot turn a non multipart response into multipart.
     ContentTypeMissing,
     NotMultipart,
+    MalformedMultipart(String),
     InvalidHeader(http::header::ToStrError),
     InvalidMimeType(mime::FromStrError),
     Http(hyper::Error),
+}
+
+impl Error {
+    pub(crate) fn malformed<S: Into<String>>(msg: S) -> Self {
+        Error::MalformedMultipart(msg.into())
+    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::ContentTypeMissing => write!(f, "Content Type header missing from response"),
+            Error::MalformedMultipart(ref msg) => write!(f, "Malformed Multipart: {}", msg),
             Error::NotMultipart => {
                 write!(f, "Cannot handle a non multipart response as multipart.")
             }
@@ -28,6 +36,7 @@ impl StdError for Error {
     fn description(&self) -> &'static str {
         match *self {
             Error::ContentTypeMissing => "Content type header was missing from http response",
+            Error::MalformedMultipart(_) => "Ran into errors when parsing multipart",
             Error::NotMultipart => "The Http response was not a multipart",
             Error::InvalidHeader(_) => "Value of the Content Type header could not be parsed",
             Error::InvalidMimeType(_) => {
@@ -40,6 +49,7 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
             Error::InvalidHeader(ref e) => Some(e),
+            Error::MalformedMultipart(_) => None,
             Error::InvalidMimeType(ref e) => Some(e),
             Error::Http(ref e) => e.source(),
             _ => None,
