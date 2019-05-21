@@ -2,7 +2,7 @@ use chrono::NaiveDateTime;
 use futures::{Future, Stream};
 use http::Uri;
 use hyper_multipart::{Error, Multipart, MultipartChunks};
-use log::{debug, error};
+use log::error;
 use std::time::Duration;
 use tokio::prelude::StreamExt;
 

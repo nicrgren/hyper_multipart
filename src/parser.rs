@@ -10,15 +10,6 @@ pub(crate) enum ParseResult {
 }
 
 #[cfg(test)]
-impl ParseResult {
-    pub(crate) fn unwrap_ok(self) -> Bytes {
-        match self {
-            ParseResult::Ready(bs) => bs,
-            _ => panic!("Called unwrap_ok on a non-ok ParseResult"),
-        }
-    }
-}
-
 impl std::cmp::PartialEq for ParseResult {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -33,7 +24,6 @@ impl std::cmp::PartialEq for ParseResult {
 
 pub(crate) enum Parser {
     Boundary(BoundaryParser),
-    LineFeed,
 }
 
 impl Parser {
@@ -61,17 +51,13 @@ impl Parser {
                 Ok(Parser::Boundary(bp))
             }
 
-            None => {
-                log::debug!("Creating LineFeed Parser");
-                Ok(Parser::LineFeed)
-            }
+            None => return Err(Error::malformed("mime param boundary missing")),
         }
     }
 
     pub fn parse(&mut self, chunk: hyper::body::Chunk) -> ParseResult {
         match self {
             Parser::Boundary(ref mut inner) => inner.parse(chunk),
-            Parser::LineFeed => unimplemented!(),
         }
     }
 }
