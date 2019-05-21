@@ -2,7 +2,7 @@ use crate::Error;
 use bytes::{Bytes, BytesMut};
 
 #[derive(Debug)]
-pub(crate) enum ParseResult {
+pub enum ParseResult {
     Done,
     NotReady,
     Ready(Bytes),
@@ -22,7 +22,7 @@ impl std::cmp::PartialEq for ParseResult {
     }
 }
 
-pub(crate) enum Parser {
+pub enum Parser {
     Boundary(BoundaryParser),
 }
 
@@ -55,15 +55,33 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self, chunk: hyper::body::Chunk) -> ParseResult {
+    pub fn add_buf<T>(&mut self, chunk: T)
+    where
+        T: bytes::Buf,
+    {
         match self {
-            Parser::Boundary(ref mut inner) => inner.parse(chunk),
+            Parser::Boundary(ref mut inner) => inner.add_buf(chunk),
+        }
+    }
+
+    pub fn add_bytes<T>(&mut self, bs: T)
+    where
+        T: AsRef<[u8]>,
+    {
+        match self {
+            Parser::Boundary(ref mut inner) => inner.add_bytes(bs),
+        }
+    }
+
+    pub fn parse(&mut self) -> ParseResult {
+        match self {
+            Parser::Boundary(ref mut inner) => inner.parse(),
         }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct BoundaryParser {
+pub struct BoundaryParser {
     boundary: String,
     buffer: BytesMut,
 }
@@ -80,9 +98,16 @@ impl BoundaryParser {
         }
     }
 
-    pub fn parse<T: AsRef<[u8]>>(&mut self, chunk: T) -> ParseResult {
+    pub fn add_buf<T: bytes::Buf>(&mut self, chunk: T) {
+        self.buffer.extend(chunk.bytes());
+    }
+
+    pub fn add_bytes<T: AsRef<[u8]>>(&mut self, bs: T) {
+        self.buffer.extend(bs.as_ref())
+    }
+
+    pub fn parse(&mut self) -> ParseResult {
         // Read the starting boundary.
-        self.buffer.extend(chunk.as_ref());
         let boundary = self.boundary.as_bytes();
 
         if self.buffer.len() < boundary.len() {
@@ -158,19 +183,19 @@ Part2\r
 ";
 
         let mut p = BoundaryParser::with_capacity("simple boundary", 500);
-
+        p.add_bytes(data.as_bytes());
         let exp = "\r
 Part1";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
 
         let exp = "Content-type: text/plain; charset=us-ascii\r
 \r
 Part2\r
 ";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
-        assert_eq!(ParseResult::Done, p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
+        assert_eq!(ParseResult::Done, p.parse());
     }
 
     #[test]
@@ -187,19 +212,20 @@ Part2\r
 ";
 
         let mut p = BoundaryParser::with_capacity("simple boundary", 500);
+        p.add_bytes(data.as_bytes());
 
         let exp = "\r
 Part1";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
 
         let exp = "Content-type: text/plain; charset=us-ascii\r
 \r
 Part2\r
 ";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
-        assert_eq!(ParseResult::Done, p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
+        assert_eq!(ParseResult::Done, p.parse());
     }
 
     #[test]
@@ -225,19 +251,20 @@ This is the epilogue.  It is also to be ignored.\r
 ";
 
         let mut p = BoundaryParser::with_capacity("simple boundary", 500);
+        p.add_bytes(data.as_bytes());
 
         let exp = "\r
 Part1";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
 
         let exp = "Content-type: text/plain; charset=us-ascii\r
 \r
 Part2\r
 ";
 
-        assert_eq!(ParseResult::Ready(exp.into()), p.parse(data));
-        assert_eq!(ParseResult::Done, p.parse(data));
+        assert_eq!(ParseResult::Ready(exp.into()), p.parse());
+        assert_eq!(ParseResult::Done, p.parse());
     }
 
 }

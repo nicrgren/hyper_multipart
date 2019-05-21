@@ -13,7 +13,6 @@ pub const DEFAULT_BUFFER_CAP: usize = 35000;
 pub trait Multipart<T>
 where
     Self: Sized,
-    T: Sized,
 {
     fn into_multipart_with_capacity(self, buf_cap: usize) -> Result<MultipartChunks<T>, Error>;
 
@@ -46,6 +45,8 @@ impl Multipart<hyper::Body> for hyper::Request<hyper::Body> {
 pub struct MultipartChunks<S> {
     inner: S,
     parser: Parser,
+    inner_done: bool,
+    inner_error: Option<Error>,
 }
 
 impl<S, E> MultipartChunks<S>
@@ -61,31 +62,56 @@ where
         let parser = Parser::from_with_capacity(headers, capacity)?;
         Ok(Self {
             inner: stream,
+            inner_done: false,
+            inner_error: None,
             parser,
         })
     }
 }
 
-impl<S, E> Stream for MultipartChunks<S>
+impl<S, I, E> Stream for MultipartChunks<S>
 where
-    S: Stream<Item = hyper::body::Chunk, Error = E>,
+    S: Stream<Item = I, Error = E>,
+    I: bytes::Buf,
     E: Into<Error>,
 {
     type Item = Part;
     type Error = Error;
 
     fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        match self.inner.poll() {
-            Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(e) => Err(e.into()),
+        let mut inner_not_ready = false;
 
-            Ok(Async::Ready(Some(chunk))) => match self.parser.parse(chunk) {
-                ParseResult::Done => Ok(Async::Ready(None)),
-                ParseResult::NotReady => self.poll(),
-                ParseResult::Err(err) => Err(err.into()),
-                ParseResult::Ready(bytes) => Ok(Async::Ready(Some(Part::from(bytes)))),
+        match self.inner.poll() {
+            Ok(Async::Ready(None)) => {
+                self.inner_done = true;
+            }
+            Err(e) => {
+                self.inner_done = true;
+                self.inner_error = Some(e.into());
+            }
+
+            Ok(Async::Ready(Some(chunk))) => self.parser.add_buf(chunk),
+
+            Ok(Async::NotReady) => inner_not_ready = true,
+        }
+
+        match self.parser.parse() {
+            ParseResult::Done => Ok(Async::Ready(None)),
+            ParseResult::Err(err) => Err(err.into()),
+            ParseResult::Ready(bytes) => Ok(Async::Ready(Some(Part::from(bytes)))),
+
+            ParseResult::NotReady if self.inner_done => match self.inner_error.take() {
+                Some(err) => Err(err),
+                None => Err(Error::malformed("Unexpected end to multipart stream")),
             },
+
+            ParseResult::NotReady => {
+                if !inner_not_ready {
+                    tokio::prelude::task::current().notify()
+                }
+
+                Ok(Async::NotReady)
+            }
         }
     }
 }

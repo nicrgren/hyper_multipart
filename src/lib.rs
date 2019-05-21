@@ -7,4 +7,4 @@ pub use multipart::{Multipart, MultipartChunks};
 mod part;
 pub use part::Part;
 
-mod parser;
+pub mod parser;
