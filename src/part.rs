@@ -36,12 +36,9 @@ impl Part {
 
         self.header_lines()
             .filter_map(|line| line.ok())
-            .map(|s| parse_header_line(s))
-            .for_each(|tuple| match tuple {
-                Some((name, value)) => {
-                    res.insert(name, value);
-                }
-                _ => (),
+            .filter_map(|s| parse_header_line(s))
+            .for_each(|(name, value)| {
+                res.insert(name, value);
             });
 
         res
