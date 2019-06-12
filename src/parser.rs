@@ -27,18 +27,17 @@ pub enum Parser {
 }
 
 impl Parser {
-    pub(crate) fn from_with_capacity(
-        headers: http::header::HeaderMap<http::header::HeaderValue>,
+    pub fn from_with_capacity<H: crate::HeaderMap>(
+        headers: &H,
         capacity: usize,
     ) -> Result<Self, Error> {
         let content_type = headers
-            .get(http::header::CONTENT_TYPE)
+            .get_value(http::header::CONTENT_TYPE)
             .ok_or(Error::ContentTypeMissing)?;
 
         let mime_type = content_type
-            .to_str()
-            .map_err(Error::InvalidHeader)
-            .and_then(|s| s.parse::<mime::Mime>().map_err(Error::InvalidMimeType))?;
+            .parse::<mime::Mime>()
+            .map_err(Error::InvalidMimeType)?;
 
         if mime_type.type_() != mime::MULTIPART {
             return Err(Error::NotMultipart);
@@ -52,15 +51,6 @@ impl Parser {
             }
 
             None => return Err(Error::malformed("mime param boundary missing")),
-        }
-    }
-
-    pub fn add_buf<T>(&mut self, chunk: T)
-    where
-        T: bytes::Buf,
-    {
-        match self {
-            Parser::Boundary(ref mut inner) => inner.add_buf(chunk),
         }
     }
 
@@ -96,10 +86,6 @@ impl BoundaryParser {
             boundary,
             buffer: BytesMut::with_capacity(capacity),
         }
-    }
-
-    pub fn add_buf<T: bytes::Buf>(&mut self, chunk: T) {
-        self.buffer.extend(chunk.bytes());
     }
 
     pub fn add_bytes<T: AsRef<[u8]>>(&mut self, bs: T) {

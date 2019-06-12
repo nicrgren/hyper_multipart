@@ -6,14 +6,17 @@ pub enum Error {
     ContentTypeMissing,
     NotMultipart,
     MalformedMultipart(String),
-    InvalidHeader(http::header::ToStrError),
     InvalidMimeType(mime::FromStrError),
-    Http(hyper::Error),
+    InnerStream(String),
 }
 
 impl Error {
     pub(crate) fn malformed<S: Into<String>>(msg: S) -> Self {
         Error::MalformedMultipart(msg.into())
+    }
+
+    pub(crate) fn inner<E: std::fmt::Display + Send + 'static>(e: E) -> Self {
+        Error::InnerStream(format!("{}", e))
     }
 }
 
@@ -25,9 +28,8 @@ impl fmt::Display for Error {
             Error::NotMultipart => {
                 write!(f, "Cannot handle a non multipart response as multipart.")
             }
-            Error::InvalidHeader(ref e) => write!(f, "Could not parse Content Type header: {}", e),
             Error::InvalidMimeType(ref e) => write!(f, "Content-Type value invalid: {}", e),
-            Error::Http(ref e) => write!(f, "Http: {}", e),
+            Error::InnerStream(ref e) => write!(f, "InnerStream: {}", e),
         }
     }
 }
@@ -38,20 +40,18 @@ impl StdError for Error {
             Error::ContentTypeMissing => "Content type header was missing from http response",
             Error::MalformedMultipart(_) => "Ran into errors when parsing multipart",
             Error::NotMultipart => "The Http response was not a multipart",
-            Error::InvalidHeader(_) => "Value of the Content Type header could not be parsed",
             Error::InvalidMimeType(_) => {
                 "Value of the Content Type header contained an invalid mime type"
             }
-            Error::Http(_) => "Http error thrown by Hyper",
+            Error::InnerStream(_) => "Http error thrown by the underlying layer",
         }
     }
 
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match *self {
-            Error::InvalidHeader(ref e) => Some(e),
             Error::MalformedMultipart(_) => None,
             Error::InvalidMimeType(ref e) => Some(e),
-            Error::Http(ref e) => e.source(),
+            Error::InnerStream(_) => None,
             _ => None,
         }
     }
@@ -59,6 +59,6 @@ impl StdError for Error {
 
 impl From<hyper::Error> for Error {
     fn from(inner: hyper::Error) -> Self {
-        Error::Http(inner)
+        Error::InnerStream(format!("Hyper error: {}", inner))
     }
 }
