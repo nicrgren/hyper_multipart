@@ -112,6 +112,10 @@ impl BoundaryParser {
         const CRLF: &[u8] = &[13, 10]; // "\r\n"
         const BOUNDARY_LAST_PART_SENTINEL: &[u8] = &[45, 45]; // "--"
 
+        if self.buffer.len() < part_start + 2 {
+            return ParseResult::NotReady;
+        }
+
         // the next two bytes are either CRLF or --.
         match &self.buffer[part_start..part_start + 2] {
             CRLF => {
@@ -131,6 +135,10 @@ impl BoundaryParser {
                     slice
                 )));
             }
+        }
+
+        if self.buffer.len() < part_start {
+            return ParseResult::NotReady;
         }
 
         match twoway::find_bytes(&self.buffer[part_start..], boundary) {
