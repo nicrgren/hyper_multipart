@@ -15,7 +15,7 @@ impl Error {
         Error::MalformedMultipart(msg.into())
     }
 
-    pub(crate) fn inner<E: std::fmt::Display + Send + 'static>(e: E) -> Self {
+    pub(crate) fn inner<E: fmt::Display + Send + 'static>(e: E) -> Self {
         Error::InnerStream(format!("{}", e))
     }
 }

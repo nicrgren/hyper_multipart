@@ -3,7 +3,6 @@ use crate::{
     Part,
 };
 use futures::{Async, Stream};
-use std::error::Error as StdError;
 
 use crate::Error;
 
