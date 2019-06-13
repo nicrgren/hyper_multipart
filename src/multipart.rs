@@ -69,7 +69,7 @@ where
     B: AsRef<[u8]>,
     E: std::fmt::Display + Send + 'static,
 {
-    fn from_parts_with_capacity<H: crate::HeaderMap>(
+    pub(crate) fn from_parts_with_capacity<H: crate::HeaderMap>(
         stream: S,
         headers: &H,
         capacity: usize,
